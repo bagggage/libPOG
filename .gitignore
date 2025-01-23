@@ -365,6 +365,8 @@ FodyWeavers.xsd
 /client/client.vcxproj
 /client/client.vcxproj.filters
 
+.vscode
+
 CMakeFiles
 /include
 /ssl
