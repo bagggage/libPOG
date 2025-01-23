@@ -1,5 +1,5 @@
-#ifndef STRING_UTILS_H
-#define STRING_UTILS_H
+#ifndef _STRING_UTILS_H
+#define _STRING_UTILS_H
 
 #include <string>
 

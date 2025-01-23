@@ -6,23 +6,23 @@
 #include <openssl/err.h>
 
 #ifdef _WIN32
-    #define WIN(exp) exp
-    #define NIX(exp)
+#define WIN(exp) exp
+#define NIX(exp)
 #else //*nix
-    #define WIN(exp)
-    #define NIX(exp) exp
+#define WIN(exp)
+#define NIX(exp) exp
 #endif
 
 using namespace Net;
 
-HTTPSClient::HTTPSClient() : HTTPClient() {
+HttpsClient::HttpsClient() : HttpClient() {
     sslContext = nullptr;
     sslSocket = nullptr;
 
     clientStatus = ClientStatus::kClientDisconnected;
 }
 
-void HTTPSClient::Init(const uint32_t port, const std::string &hostAddress) {
+void HttpsClient::Init(const uint32_t port, const std::string& hostAddress) {
     if ((sslContext = SSL_CTX_new(TLS_client_method())) == nullptr) {
         std::cout << "Failed to create SSL context" << std::endl;
         ERR_print_errors_fp(stderr);
@@ -56,7 +56,7 @@ void HTTPSClient::Init(const uint32_t port, const std::string &hostAddress) {
     clientStatus = ClientStatus::kCLientInited;
 }
 
-bool HTTPSClient::HTTPSConnect(const uint32_t port, const std::string &hostAddress) {
+bool HttpsClient::HTTPSConnect(const uint32_t port, const std::string& hostAddress) {
     if (clientStatus != ClientStatus::kClientDisconnected) {
         std::cout << "Connection Error: client already connected " << std::endl;
         return false;
@@ -74,11 +74,14 @@ bool HTTPSClient::HTTPSConnect(const uint32_t port, const std::string &hostAddre
     return true;
 }
 
-std::string HTTPSClient::SendHttpsRequest(const std::string &method, const std::string &uri, const std::string &version) {
+std::string
+HttpsClient::SendHttpsRequest(const std::string& method, const std::string& uri, const std::string& version) {
     request.clear();
     response.clear();
 
-    request = CreateRequest(const_cast<std::string &>(method), const_cast<std::string &>(uri), const_cast<std::string &>(version));
+    request = CreateRequest(
+        const_cast<std::string&>(method), const_cast<std::string&>(uri), const_cast<std::string&>(version)
+    );
 
     Send();
     do {
@@ -89,8 +92,10 @@ std::string HTTPSClient::SendHttpsRequest(const std::string &method, const std::
     return response;
 }
 
-void HTTPSClient::Send() {
-    if (SSL_write(sslSocket, request.c_str(), request.size()) > 0) return;
+void HttpsClient::Send() {
+    if (SSL_write(sslSocket, request.c_str(), request.size()) > 0) {
+        return;
+    }
 
     std::cout << "Failed to send HTTP request" << std::endl;
     ERR_print_errors_fp(stderr);
@@ -104,8 +109,10 @@ void HTTPSClient::Send() {
     exit(SOCKET_ERROR);
 }
 
-void HTTPSClient::Receive() {
-    if ((buffer.size = SSL_read(sslSocket, buffer.data, BUFFER_MAX_SIZE)) >= 0) return;
+void HttpsClient::Receive() {
+    if ((buffer.size = SSL_read(sslSocket, buffer.data, BUFFER_MAX_SIZE)) >= 0) {
+        return;
+    }
 
     std::cout << "Receive error:" << std::endl;
     ERR_print_errors_fp(stderr);
@@ -118,17 +125,16 @@ void HTTPSClient::Receive() {
     SSL_CTX_free(sslContext);
 }
 
-void HTTPSClient::Proccess() {
+void HttpsClient::Proccess() {
     response.assign(buffer.data);
 }
 
-void HTTPSClient::HTTPSDisconnect() {
+void HttpsClient::HTTPSDisconnect() {
     if (clientStatus != ClientStatus::kClientDisconnected) {
         SSL_shutdown(sslSocket);
         SSL_free(sslSocket);
         SSL_CTX_free(sslContext);
         clientStatus = ClientStatus::kClientDisconnected;
     }
-    HTTPClient::Disconnect();
+    HttpClient::Disconnect();
 }
-

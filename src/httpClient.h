@@ -1,17 +1,17 @@
-#ifndef HTTPCLIENT_H
-#define HTTPCLIENT_H
+#ifndef _HTTPCLIENT_H
+#define _HTTPCLIENT_H
 
 #ifdef _WIN32 // Windows NT
-#include <WinSock2.h>
 #include <WS2tcpip.h>
-#else  //*nix
-#include <cstdio>
-#include <cstdlib>
+#include <WinSock2.h>
+#else //*nix
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <cstdio>
+#include <cstdlib>
 #endif
 
 #include <string>
@@ -30,22 +30,22 @@ typedef int SOCKET;
 #endif
 
 #ifdef _WIN32
-    #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "ws2_32.lib")
 #endif
 
 #ifndef INVALID_SOCKET
-    #define INVALID_SOCKET 0
+#define INVALID_SOCKET 0
 #endif
 
-#define INVALID_PORT  0
+#define INVALID_PORT 0
 #ifndef SOCKET_ERROR
-    #define SOCKET_ERROR -1
+#define SOCKET_ERROR -1
 #endif
 
 static constexpr uint8_t IPV4_LENGTH = 15;
 static constexpr uint8_t IPV6_LENGTH = 65;
 
-static constexpr uint8_t  HTTP_PORT = 80;
+static constexpr uint8_t HTTP_PORT = 80;
 static constexpr uint16_t HTTPS_PORT = 443;
 
 namespace Net {
@@ -54,18 +54,19 @@ namespace Net {
         SOCKADDR_IN6* IPv6;
     };
 
-    class HTTPClient {
+    class HttpClient {
     public:
-        HTTPClient();
-        virtual ~HTTPClient() { HTTPClient::Disconnect(); }
+        HttpClient();
+        virtual ~HttpClient() { HttpClient::Disconnect(); }
 
         bool Connect(const uint32_t port, const std::string_view hostAddress);
-        std::string SendHttpRequest(const std::string_view method, const std::string_view uri, const std::string_view version);
+        std::string
+        SendHttpRequest(const std::string_view method, const std::string_view uri, const std::string_view version);
         void Disconnect();
 
         inline uint8_t GetClientStatus() { return clientStatus; }
-        inline char* GetIpAddress()      { return ipAddress; }
-        inline uint32_t GetPort()        { return port; }
+        inline char* GetIpAddress() { return ipAddress; }
+        inline uint32_t GetPort() { return port; }
 
     protected:
         std::string CreateRequest(std::string method, const std::string_view uri, const std::string_view version);
@@ -105,6 +106,6 @@ namespace Net {
 
         ClientStatus clientStatus = ClientStatus::kClientDisconnected;
     };
-}
+} // namespace Net
 
 #endif // !HTTPClient_H

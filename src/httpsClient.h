@@ -1,28 +1,28 @@
-#ifndef HTTPSCLIENT_H
-#define HTTPSCLIENT_H
+#ifndef _HTTPSCLIENT_H
+#define _HTTPSCLIENT_H
 
 #include <string>
 
 #include <openssl/ssl.h>
 
-#include "HTTPClient.h"
+#include "httpClient.h"
 
 namespace Net {
-    class HTTPSClient final : HTTPClient {
+    class HttpsClient final : HttpClient {
     public:
-        HTTPSClient();
-        ~HTTPSClient() override { HTTPSClient::Disconnect(); }
+        HttpsClient();
+        ~HttpsClient() override { HttpsClient::Disconnect(); }
 
         bool HTTPSConnect(const uint32_t port, const std::string& hostAddress);
         std::string SendHttpsRequest(const std::string& method, const std::string& uri, const std::string& version);
         void HTTPSDisconnect();
 
         inline uint8_t GetClientStatus() { return clientStatus; };
-        inline char* GetIpAddress()      { return ipAddress; };
-        inline uint32_t GetPort()        { return port; };
+        inline char* GetIpAddress() { return ipAddress; };
+        inline uint32_t GetPort() { return port; };
 
     private:
-        using HTTPClient::CreateRequest;
+        using HttpClient::CreateRequest;
 
         void Init(const uint32_t port, const std::string& hostAddress);
         void Receive();
@@ -38,7 +38,6 @@ namespace Net {
         std::string response;
         DataBuffer buffer;
     };
-}
+} // namespace Net
 
 #endif // !HTTPSCLIENT_H
-

@@ -5,10 +5,10 @@ set(CMAKE_CXX_STANDARD 17)
 add_subdirectory(${CMAKE_SOURCE_DIR}/thirdParty/openssl ssl)
 
 add_library(libPOG
-    src/HTTPClient.h
-    src/HTTPClient.cpp
-    src/HTTPSClient.h
-    src/HTTPSClient.cpp
+    src/httpClient.h
+    src/httpClient.cpp
+    src/httpsClient.h
+    src/httpsClient.cpp
     src/stringUtils.h
     src/stringUtils.cpp
     src/dataBuffer.h
@@ -25,8 +25,9 @@ set_target_properties(ssl crypto libPOG PROPERTIES
 # Copy headers
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include/libPOG)
 file(COPY 
-    src/HTTPClient.h
-    src/HTTPSClient.h
+    src/libpog.h
+    src/httpClient.h
+    src/httpsClient.h
     src/dataBuffer.h
     ${CMAKE_BINARY_DIR}/ssl/include/openssl
     DESTINATION ${CMAKE_BINARY_DIR}/include/libPOG
