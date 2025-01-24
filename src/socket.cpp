@@ -10,9 +10,6 @@ using namespace Net;
 #ifdef _WIN32 // Windows NT
 #define OS(nt, unix) nt
 
-typedef struct sockaddr_in SOCKADDR_IN;
-typedef struct sockaddr_in6 SOCKADDR_IN6;
-
 static bool isWsaInitialized = false;
 
 inline static int GetLastSystemError() {
@@ -57,8 +54,6 @@ static void DeinitWSA() {
 #include <cstdio>
 #include <cstdlib>
 
-typedef struct addrinfo ADDRINFO;
-
 inline static int GetLastSystemError() {
     return errno;
 }
@@ -82,7 +77,7 @@ Address Address::FromString(const char* address_str, const port_t port, Family f
 
     if (ret != 1) {
         Utils::Error("Invalid address format");
-        result.osAddress._validFlag = invalidFlag;
+        result.osAddress._validFlag = INVALID_FLAG;
     } else {
         result.osAddress.any.sa_family = static_cast<int>(family);
         // Assume that `sin_port` in `sockaddr_in6` has the same byte offset.
@@ -92,6 +87,8 @@ Address Address::FromString(const char* address_str, const port_t port, Family f
 }
 
 Address Address::FromDomain(const char* domain_str, const port_t port, const Protocol protocol, const Family family) {
+    typedef struct addrinfo ADDRINFO;
+
     Address result;
 
     ADDRINFO hints;
@@ -122,8 +119,7 @@ Address Address::FromDomain(const char* domain_str, const port_t port, const Pro
     return result;
 }
 
-Address
-Address::MakeBind(const Protocol protocol, const Family family, const port_t port) {
+Address Address::MakeBind(const Protocol protocol, const Family family, const port_t port) {
     Address result;
     if (protocol == Protocol::None || family == Family::None) {
         return result;
@@ -151,10 +147,12 @@ std::string Address::ConvertToString() const {
     std::string result;
     const void* ret;
     if (osAddress.any.sa_family == AF_INET) {
-        result.reserve(INET_ADDRSTRLEN + 6); result.resize(INET_ADDRSTRLEN);
+        result.reserve(INET_ADDRSTRLEN + 6);
+        result.resize(INET_ADDRSTRLEN);
         ret = inet_ntop(AF_INET, &osAddress.ipv4.sin_addr, result.data(), result.size());
     } else {
-        result.reserve(INET6_ADDRSTRLEN + 6); result.resize(INET6_ADDRSTRLEN);
+        result.reserve(INET6_ADDRSTRLEN + 6);
+        result.resize(INET6_ADDRSTRLEN);
         ret = inet_ntop(AF_INET6, &osAddress.ipv6.sin6_addr, result.data(), result.size());
     }
 
@@ -176,6 +174,7 @@ bool Socket::Open(const Address::Family addr_family, const Protocol protocol) {
 
 #ifdef _WIN32
     if (!TryInitWSA()) [[unlikely]] {
+        status = Failed;
         return false;
     }
 #endif
@@ -198,9 +197,11 @@ bool Socket::Open(const Address::Family addr_family, const Protocol protocol) {
 
     osSocket = socket(static_cast<int>(addr_family), sock_type, sock_prot);
     if (osSocket == INVALID_SOCKET) [[unlikely]] {
-        Utils::Error("Failed to open socket: ", std::system_category().message(GetLastSystemError()));
+        status = static_cast<Status>(GetLastSystemError());
+        Utils::Error("Failed to open socket: ", std::system_category().message(static_cast<int>(status)));
         return false;
     }
+
     return true;
 }
 
@@ -209,53 +210,68 @@ void Socket::Close() {
         return;
     }
 
-    status = State::None;
+    state = State::None;
     if (OS(closesocket, close)(osSocket) != 0) [[unlikely]] {
-        Utils::Error("Failed to close socket: ", std::system_category().message(GetLastSystemError()));
+        status = static_cast<Status>(GetLastSystemError());
+        Utils::Error("Failed to close socket: ", std::system_category().message(static_cast<int>(status)));
     }
+
     osSocket = INVALID_SOCKET;
 }
 
 bool Socket::Connect(const Address& address) {
     LIBPOG_ASSERT(
-        (IsOpen() && status == State::None),
+        (IsOpen() && state == State::None),
         "Socket can be connected from opened state only, if it's not alredy connected or listening"
     );
 
     if (connect(osSocket, &address.osAddress.any, sizeof(address)) < 0) {
-        Utils::Warn("Failed to connect: ", std::system_category().message(GetLastSystemError()));
+        status = static_cast<Status>(GetLastSystemError());
+        Utils::Error("Failed to connect: ", std::system_category().message(static_cast<int>(status)));
         return false;
     }
+
+    state = State::Connected;
     return true;
 }
 
 Address::port_t Socket::Listen(const Address& address) {
     LIBPOG_ASSERT(
-        (IsOpen() && status == State::None),
+        (IsOpen() && state == State::None),
         "Socket can start listening from opened state only, if it's not alredy connected or listening"
     );
 
     if (bind(osSocket, &address.osAddress.any, sizeof(address.osAddress.any)) == SOCKET_ERROR) {
-        Utils::Error("Failed to bind address to socket: ", std::system_category().message(GetLastSystemError()));
-        return Address::invalidPort;
+        status = static_cast<Status>(GetLastSystemError());
+        Utils::Error("Failed to bind address to socket: ", std::system_category().message(static_cast<int>(status)));
+        return Address::INVALID_PORT;
+    }
+    if (listen(osSocket, 0) < 0) {
+        status = static_cast<Status>(GetLastSystemError());
+        Utils::Error("Failed to start listening: ", std::system_category().message(static_cast<int>(status)));
+        return Address::INVALID_PORT;
     }
 
-    if (listen(osSocket, 0) < 0) {
-        Utils::Error("Failed to start listening: ", std::system_category().message(GetLastSystemError()));
-        return Address::invalidPort;
-    }
-    return address.osAddress.ipv4.sin_port;
+    state = State::Listening;
+    return address.GetPort();
 }
 
-void Socket::Send(const char* data, const uint size) {
+uint Socket::Send(const char* data, const uint size) {
     LIBPOG_ASSERT(IsConnected(), "Socket must be connected");
-    send(osSocket, data, size, 0);
+    ssize_t ret = send(osSocket, data, size, 0);
+    if (ret == -1) [[unlikely]] {
+        status = static_cast<Status>(GetLastSystemError());
+        return 0;
+    }
+
+    return static_cast<uint>(ret);
 }
 
 uint Socket::Receive(char* buffer, const uint size) {
     LIBPOG_ASSERT(IsConnected(), "Socket must be connected");
     const ssize_t ret = recv(osSocket, buffer, size, 0);
-    if (ret < -1) [[unlikely]] {
+    if (ret == -1) [[unlikely]] {
+        status = static_cast<Status>(GetLastSystemError());
         return 0;
     }
 
@@ -264,14 +280,14 @@ uint Socket::Receive(char* buffer, const uint size) {
 
 // Wrappers for strings
 template<>
-void Socket::Send(const char* string) {
-    Send(string, std::strlen(string));
+uint Socket::Send(const char* string) {
+    return Send(string, std::strlen(string));
 }
 template<>
-void Socket::Send(const std::string_view& string) {
-    Send(string.data(), string.size());
+uint Socket::Send(const std::string_view& string) {
+    return Send(string.data(), string.size());
 }
 template<>
-void Socket::Send(const std::string& string) {
-    Send(string.data(), string.size());
+uint Socket::Send(const std::string& string) {
+    return Send(string.data(), string.size());
 }

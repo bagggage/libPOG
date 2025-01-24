@@ -1,8 +1,8 @@
 #ifndef _SOCKET_H
 #define _SOCKET_H
 
-#include <string>
 #include <cstring>
+#include <string>
 
 #ifdef _WIN32 // Windows NT
 #include <WS2tcpip.h>
@@ -20,13 +20,23 @@
 #define INVALID_SOCKET -1
 #endif
 
-#define INVALID_PORT 0
-
 #ifndef SOCKET_ERROR
 #define SOCKET_ERROR -1
 #endif
 
 namespace Net {
+    enum Status : uint8_t {
+        Success = 0,
+        Failed, // Any other fail.
+        AlreadyConnected = EISCONN,
+        AlreadyInProgress = EALREADY,
+        InvalidAddress = EAFNOSUPPORT,
+        NotAvailable = EADDRNOTAVAIL,
+        Refused = ECONNREFUSED,
+        Timeout = ETIMEDOUT,
+        TryAgain = EAGAIN,
+        Unreachable = ENETUNREACH,
+    };
     enum class Protocol : uint8_t {
         None = 0,
         TCP = SOCK_STREAM,
@@ -39,7 +49,7 @@ namespace Net {
     public:
         typedef uint16_t port_t;
 
-        static constexpr port_t invalidPort = 0;
+        static constexpr port_t INVALID_PORT = 0;
 
         enum class Family : uint8_t {
             None = AF_UNSPEC,
@@ -53,16 +63,17 @@ namespace Net {
         };
 
     private:
-#ifndef _WIN32
-        typedef struct sockaddr SOCKADDR;
         typedef struct sockaddr_in SOCKADDR_IN;
         typedef struct sockaddr_in6 SOCKADDR_IN6;
+#ifndef _WIN32
+        typedef struct sockaddr SOCKADDR;
 #endif
-        static constexpr uint16_t invalidFlag = 0xffff;
+
+        static constexpr uint16_t INVALID_FLAG = 0xffff;
 
         union {
             // Small hack to track if the os-specific value was setted.
-            uint16_t _validFlag = invalidFlag;
+            uint16_t _validFlag = INVALID_FLAG;
 
             SOCKADDR any;
             SOCKADDR_IN ipv4;
@@ -109,7 +120,7 @@ namespace Net {
         inline port_t GetPort() const { return ntohs(osAddress.ipv4.sin_port); }
         inline Family GetFamily() const { return static_cast<Family>(ntohs(osAddress.ipv4.sin_family)); }
 
-        inline bool IsValid() const { return osAddress._validFlag != invalidFlag; }
+        inline bool IsValid() const { return osAddress._validFlag != INVALID_FLAG; }
         inline bool IsLocal() const {
 #ifdef _WIN32
             return false;
@@ -128,12 +139,15 @@ namespace Net {
             Connected,
             Listening
         };
+
     private:
 #ifndef _WIN32
         typedef int SOCKET;
 #endif
         SOCKET osSocket = INVALID_SOCKET;
-        State status = State::None;
+        State state = State::None;
+
+        mutable Status status = Status::Success;
 
     public:
         Socket() noexcept = default;
@@ -159,16 +173,17 @@ namespace Net {
 
         /// Starts listening for incoming connections.
         /// - `address`: address to start listening at.
-        /// Returns `Address::invalidPort` if failed, valid port otherwise.
+        /// Returns `Address::INVALID_PORT` if failed, valid port otherwise.
         Address::port_t Listen(const Address& address);
         /// Wait and accept incoming connection. Returns `Socket` connected to
         /// remote side on success, to check if the operation failed use `Socket::IsValid()` on
-        /// returned object.
+        /// returned object and `Socket::Fail()` on current socket to get failure code.
         Socket Accept(Address& out_remote_addr);
         Socket Accept();
 
-        /// Sends the data to remote side.
-        void Send(const char* data_ptr, const uint size);
+        /// Sends the data to remote side. On success return the number of bytes sent.
+        /// Otherwise returns `0`, use `Socket::Fail()` to determine what happend.
+        uint Send(const char* data_ptr, const uint size);
         /// Receives data from remote side.
         /// Returns number of received bytes. `0` represents an error or no-data,
         /// use `Socket::Fail()` to determine what happend.
@@ -176,13 +191,13 @@ namespace Net {
 
         /// Same as `Send(const char*, const uint size)`, but works with typed objects.
         template<typename T>
-        void Send(const T* object) {
-            Send(reinterpret_cast<const char*>(object), sizeof(object));
+        uint Send(const T* object) {
+            return Send(reinterpret_cast<const char*>(object), sizeof(object));
         }
         /// Same as `Send(const char*, const uint size)`, but works with typed objects.
         template<typename T>
-        void Send(const T& object) {
-            Send(reinterpret_cast<const char*>(&object), sizeof(object));
+        uint Send(const T& object) {
+            return Send(reinterpret_cast<const char*>(&object), sizeof(object));
         }
 
         /// Same as `Receive(char*, const uint size)` but works with typed objects.
@@ -196,13 +211,20 @@ namespace Net {
             return Receive(&destObject);
         }
 
-        inline State GetState() const { return status; };
+        /// Returns last error/failure code.
+        inline Status Fail() const {
+            const Status temp = status;
+            status = Success;
+            return temp;
+        };
+
+        inline State GetState() const { return state; };
         /// Returns `true` if socket descriptor is valid and ready to use.
         inline bool IsOpen() const { return osSocket != INVALID_SOCKET; }
         /// Returns `true` if socket connected to remote side.
-        inline bool IsConnected() const { return status == State::Connected; };
+        inline bool IsConnected() const { return state == State::Connected; };
         /// Returns `true` if socket is listening for connections.
-        inline bool IsListening() const { return status == State::Listening; };
+        inline bool IsListening() const { return state == State::Listening; };
         /// Returns `true` if the `Socket` represents a real os-specific socket, `false` otherwise.
         inline bool IsValid() const { return IsOpen(); }
     };
