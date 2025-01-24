@@ -7,8 +7,6 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/thirdParty/openssl ssl)
 add_library(libPOG
     src/httpClient.h
     src/httpClient.cpp
-    src/httpsClient.h
-    src/httpsClient.cpp
     src/socket.cpp
     src/stringUtils.h
     src/stringUtils.cpp
@@ -28,7 +26,6 @@ file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include/libPOG)
 file(COPY 
     src/libpog.h
     src/httpClient.h
-    src/httpsClient.h
     src/dataBuffer.h
     ${CMAKE_BINARY_DIR}/ssl/include/openssl
     DESTINATION ${CMAKE_BINARY_DIR}/include/libPOG
