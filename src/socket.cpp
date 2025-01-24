@@ -59,6 +59,49 @@ inline static int GetLastSystemError() {
 }
 #endif
 
+const char* GetStatusName(const Status status) {
+    switch (status) {
+        case Status::Success: return "Success";
+        case Status::Failed: return "Failed";
+        case Status::AlreadyConnected: return "Already Connected";
+        case Status::AlreadyInProgress: return "Already In Progress";
+        case Status::InvalidAddress: return "Invalid Address";
+        case Status::NotAvailable: return "Not Available";
+        case Status::Refused: return "Refused";
+        case Status::Timeout: return "Timeout";
+        case Status::TryAgain: return "Try Again";
+        case Status::Unreachable: return "Unreachable";
+        default:
+            break;
+    }
+    return "Unknown";
+}
+
+const char* GetProtocolName(const Protocol protocol) {
+    switch (protocol) {
+        case Protocol::None: return "None";
+        case Protocol::TCP: return "TCP";
+        case Protocol::UDP: return "UDP";
+        default:
+            break;
+    }
+    return "Unknown";
+}
+
+const char* Address::GetFamilyName(const Family family) {
+    switch (family) {
+        case Family::None: return "None";
+#ifndef _WIN32
+        case Family::Local: return "Local";
+#endif
+        case Family::IPv4: return "IPv4";
+        case Family::IPv6: return "IPv6";
+        default:
+            break;
+    }
+    return "Unknown";
+}
+
 Address Address::FromString(const char* address_str, const port_t port, Family family) {
     Address result;
 

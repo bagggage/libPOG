@@ -43,6 +43,9 @@ namespace Net {
         UDP = SOCK_DGRAM
     };
 
+    const char* GetStatusName(const Status status);
+    const char* GetProtocolName(const Protocol protocol);
+
     /// Represents os-specific network address, used within the `Socket` to configure connections.
     /// Supports `IPv4` and `IPv6` addresses, `UNIX` local addresses supported only on *NIX systems.
     class Address {
@@ -83,6 +86,8 @@ namespace Net {
         friend class Socket;
 
     public:
+        static const char* GetFamilyName(const Family family);
+
         /// Construct `Address` from port and string containing IP address.
         /// - `address_str`: null-terminated string, must contain IP address.
         /// - `family`: if `None` automatically recognise address family.
