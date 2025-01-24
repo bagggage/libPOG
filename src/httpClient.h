@@ -1,111 +1,42 @@
 #ifndef _HTTPCLIENT_H
 #define _HTTPCLIENT_H
 
-#ifdef _WIN32 // Windows NT
-#include <WS2tcpip.h>
-#include <WinSock2.h>
-#else //*nix
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <cstdio>
-#include <cstdlib>
-#endif
-
 #include <string>
 
 #include "dataBuffer.h"
-
-#ifdef _WIN32 // Windows NT
-typedef struct sockaddr_in SOCKADDR_IN;
-typedef struct sockaddr_in6 SOCKADDR_IN6;
-#else // POSIX
-typedef struct sockaddr SOCKADDR;
-typedef struct sockaddr_in SOCKADDR_IN;
-typedef struct sockaddr_in6 SOCKADDR_IN6;
-typedef struct addrinfo ADDRINFO;
-typedef int SOCKET;
-#endif
-
-#ifdef _WIN32
-#pragma comment(lib, "ws2_32.lib")
-#endif
-
-#ifndef INVALID_SOCKET
-#define INVALID_SOCKET 0
-#endif
-
-#define INVALID_PORT 0
-#ifndef SOCKET_ERROR
-#define SOCKET_ERROR -1
-#endif
-
-static constexpr uint8_t IPV4_LENGTH = 15;
-static constexpr uint8_t IPV6_LENGTH = 65;
-
-static constexpr uint8_t HTTP_PORT = 80;
-static constexpr uint16_t HTTPS_PORT = 443;
+#include "socket.h"
 
 namespace Net {
-    union SocketInfo {
-        SOCKADDR_IN* IPv4 = nullptr;
-        SOCKADDR_IN6* IPv6;
-    };
-
     class HttpClient {
-    public:
-        HttpClient();
-        virtual ~HttpClient() { HttpClient::Disconnect(); }
+    private:
+        Socket socket;
 
-        bool Connect(const uint32_t port, const std::string_view hostAddress);
-        std::string
-        SendHttpRequest(const std::string_view method, const std::string_view uri, const std::string_view version);
-        void Disconnect();
+        std::string hostAddress;
+        std::string request;
+        std::string response;
 
-        inline uint8_t GetClientStatus() { return clientStatus; }
-        inline char* GetIpAddress() { return ipAddress; }
-        inline uint32_t GetPort() { return port; }
+        DataBuffer buffer = {};
+
+        void Proccess();
 
     protected:
         std::string CreateRequest(std::string method, const std::string_view uri, const std::string_view version);
 
-    protected:
-        enum ClientStatus : uint8_t {
-            kClientDisconnected = 0,
-            kCLientInited = 1,
-            kClientConnected = 2,
-        };
+        static constexpr Address::port_t HTTP_PORT = 80;
+        static constexpr Address::port_t HTTPS_PORT = 443;
 
-#ifdef _WIN32
-        WSADATA wsaData = {};
-        static const WORD DLLVersion = MAKEWORD(2, 2);
-#endif
+    public:
+        HttpClient() = default;
+        virtual ~HttpClient() { HttpClient::Disconnect(); }
 
-        SOCKET clientSocket = INVALID_SOCKET;
-        ADDRINFO hints = {};
-        ADDRINFO* result = nullptr;
-        SocketInfo socketInfo = {};
-        uint32_t infoLength = 0;
+        Status Connect(const char* hostAddressString);
+        inline void Disconnect() { socket.Close(); };
 
-        char ipAddress[IPV6_LENGTH] = "";
-        std::string hostAddress;
-        uint32_t port = ntohs(INVALID_PORT);
+        std::string
+        SendHttpRequest(const std::string_view method, const std::string_view uri, const std::string_view version);
 
-    private:
-        void Init(const uint32_t port, const std::string_view hostAddress);
-        void Receive();
-        void Proccess();
-        void Send();
-
-    private:
-        std::string request;
-        std::string response;
-        DataBuffer buffer = {};
-
-        ClientStatus clientStatus = ClientStatus::kClientDisconnected;
+        inline Socket::State GetState() { return socket.GetState(); }
     };
 } // namespace Net
 
-#endif // !HTTPClient_H
+#endif
