@@ -9,6 +9,7 @@ add_library(libPOG
     src/httpClient.cpp
     src/httpsClient.h
     src/httpsClient.cpp
+    src/socket.cpp
     src/stringUtils.h
     src/stringUtils.cpp
     src/dataBuffer.h
@@ -32,3 +33,6 @@ file(COPY
     ${CMAKE_BINARY_DIR}/ssl/include/openssl
     DESTINATION ${CMAKE_BINARY_DIR}/include/libPOG
 )
+
+add_executable (client test/client.cpp)
+target_link_libraries(client libPOG)
