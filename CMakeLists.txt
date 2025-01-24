@@ -31,5 +31,5 @@ file(COPY
     DESTINATION ${CMAKE_BINARY_DIR}/include/libPOG
 )
 
-add_executable (client test/client.cpp)
-target_link_libraries(client libPOG)
+add_executable (socketClient test/socketClient.cpp)
+target_link_libraries(socketClient libPOG)
