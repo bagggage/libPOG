@@ -23,8 +23,8 @@ namespace Net {
         static inline void Error(const Args&... args) {
             if constexpr (!(LIBPOG_LOGS)) return;
 
-            std::cerr << _LOG_PREFIX " [Error]: ";
-            ((std::cerr << args)...);
+            std::cerr << LIBPOG_PREFIX " [Error]: ";
+            ((std::cerr << args),...);
             std::cerr << std::endl;
         }
 
@@ -33,7 +33,7 @@ namespace Net {
             if constexpr (!(LIBPOG_LOGS)) return;
 
             std::cerr << LIBPOG_PREFIX " [Warning]: ";
-            ((std::cerr << args)...);
+            ((std::cerr << args),...);
             std::cerr << std::endl;
         }
     };
