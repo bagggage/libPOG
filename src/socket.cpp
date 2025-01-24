@@ -83,19 +83,18 @@ Address Address::FromString(const char* address_str, const port_t port, Family f
     return result;
 }
 
-Address Address::FromDomain(
-    const char* domain_str,
-    const port_t port,
-    const Protocol protocol,
-    const Family family
-) {
+Address Address::FromDomain(const char* domain_str, const port_t port, const Protocol protocol, const Family family) {
     Address result;
 
     ADDRINFO hints;
     std::memset(&hints, 0, sizeof(hints));
 
-    if (protocol != Protocol::None) hints.ai_socktype = static_cast<int>(protocol);
-    if (family != Family::None) hints.ai_family = static_cast<int>(family);
+    if (protocol != Protocol::None) {
+        hints.ai_socktype = static_cast<int>(protocol);
+    }
+    if (family != Family::None) {
+        hints.ai_family = static_cast<int>(family);
+    }
 
     ADDRINFO* addresses = nullptr;
     int ret = getaddrinfo(domain_str, nullptr, &hints, &addresses);
@@ -104,7 +103,9 @@ Address Address::FromDomain(
         return result;
     }
 
-    if (!addresses) return result;
+    if (!addresses) {
+        return result;
+    }
 
     result.osAddress.any = *addresses->ai_addr;
     freeaddrinfo(addresses);
@@ -112,11 +113,8 @@ Address Address::FromDomain(
     return result;
 }
 
-Address Address::MakeBind(
-    const Protocol protocol = Protocol::TCP,
-    const Family family = Family::IPv4,
-    const port_t port = 0
-) {
+Address
+Address::MakeBind(const Protocol protocol = Protocol::TCP, const Family family = Family::IPv4, const port_t port = 0) {
     Address result;
     if (protocol == Protocol::None || family == Family::None) {
         return result;
@@ -149,7 +147,9 @@ std::string Address::ConvertToString() const {
         ret = inet_ntop(AF_INET6, &osAddress.ipv6.sin6_addr, result.data(), result.size());
     }
 
-    if (ret == nullptr) return {};
+    if (ret == nullptr) {
+        return {};
+    }
     return std::move(result);
 }
 
@@ -166,10 +166,16 @@ bool Socket::Open(const Protocol protocol, const Address::Family addr_family) {
     int sock_prot = 0;
 
     switch (protocol) {
-        case Protocol::TCP: sock_prot = IPPROTO_TCP; break;
-        case Protocol::UDP: sock_prot = IPPROTO_UDP; break;
-        case Protocol::None: break;
-        default: break;
+        case Protocol::TCP:
+            sock_prot = IPPROTO_TCP;
+            break;
+        case Protocol::UDP:
+            sock_prot = IPPROTO_UDP;
+            break;
+        case Protocol::None:
+            break;
+        default:
+            break;
     }
 
     osSocket = socket(static_cast<int>(addr_family), sock_type, sock_prot);
@@ -181,17 +187,20 @@ bool Socket::Open(const Protocol protocol, const Address::Family addr_family) {
 }
 
 void Socket::Close() {
-    if (IsOpen() == false) [[unlikely]] return;
+    if (IsOpen() == false) [[unlikely]] {
+        return;
+    }
 
-    status = Status::None;
+    status = State::None;
     if (OS(closesocket, close)(osSocket) != 0) [[unlikely]] {
         Utils::Error("Failed to close socket:", std::system_category().message(GetLastSystemError()));
     }
+    osSocket = INVALID_SOCKET;
 }
 
 bool Socket::Connect(const Address& address) {
     LIBPOG_ASSERT(
-        (IsOpen() && status == Status::None),
+        (IsOpen() && status == State::None),
         "Socket can be connected from opened state only, if it's not alredy connected or listening"
     );
 
@@ -202,15 +211,9 @@ bool Socket::Connect(const Address& address) {
     return true;
 }
 
-void Socket::Disconnect() {
-    LIBPOG_ASSERT(IsConnected(), "Socket is not connected");
-
-    Close();
-}
-
 Address::port_t Socket::Listen(const Address& address) {
     LIBPOG_ASSERT(
-        (IsOpen() && status == Status::None),
+        (IsOpen() && status == State::None),
         "Socket can start listening from opened state only, if it's not alredy connected or listening"
     );
 
@@ -225,4 +228,3 @@ Address::port_t Socket::Listen(const Address& address) {
     }
     return address.osAddress.ipv4.sin_port;
 }
-

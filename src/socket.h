@@ -74,7 +74,7 @@ namespace Net {
         /// Construct `Address` from port and string containing IP address.
         /// - `address_str`: null-terminated string, must contain IP address.
         /// - `family`: if `None` automatically recognise address family.
-        /// 
+        ///
         /// Returns a valid `Address` on success, to check if failed use `Address::IsValid()` on returned object.
         static Address FromString(const char* address_str, const port_t port, Family family = Family::None);
 
@@ -84,7 +84,7 @@ namespace Net {
         /// - `protocol`: target protocol, if set make garantie that returned address can be used to create connection
         /// via specified protocol.
         /// - `family`: if `None` the result address can be either `IPv4` or `IPv6`.
-        /// 
+        ///
         /// Returns a valid `Address` on success, to check if failed use `Address::IsValid()` on returned object.
         static Address FromDomain(
             const char* domain_str,
@@ -97,13 +97,10 @@ namespace Net {
         /// - `protocol`: target protocol, shouldn't be `None`.
         /// - `family`: target address family, shouldn't be `None`.
         /// - `port`: target port, `0` means any.
-        /// 
+        ///
         /// Returns a valid `Address` if input arguments is correct.
-        static Address MakeBind(
-            const Protocol protocol = Protocol::TCP,
-            const Family family = Family::IPv4,
-            const port_t port = 0
-        );
+        static Address
+        MakeBind(const Protocol protocol = Protocol::TCP, const Family family = Family::IPv4, const port_t port = 0);
 
         /// Convert internal os-specific network address to string.
         std::string ConvertToString() const;
@@ -128,22 +125,19 @@ namespace Net {
 #ifndef _WIN32
         typedef int SOCKET;
 #endif
-        enum class Status : uint8_t {
+        enum class State : uint8_t {
             None,
             Connected,
             Listening
         };
 
         SOCKET osSocket = INVALID_SOCKET;
-        Status status = Status::None;
+        State status = State::None;
 
     public:
         Socket() noexcept = default;
         /// Opens at constructing.
-        Socket(
-            const Protocol protocol,
-            const Address::Family addrFamily = Address::Family::None
-        ) noexcept {
+        Socket(const Protocol protocol, const Address::Family addrFamily = Address::Family::None) noexcept {
             Open(protocol, addrFamily);
         }
         // Move semantic.
@@ -161,7 +155,6 @@ namespace Net {
 
         // Client side.
         bool Connect(const Address& address);
-        void Disconnect();
 
         /// Starts listening for incoming connections.
         /// - `address`: address to start listening at.
@@ -188,7 +181,7 @@ namespace Net {
         /// Same as `Send(const char*, const uint size)`, but works with typed objects.
         template<typename T>
         void Send(const T& object) {
-            Send(&object);
+            Send(reinterpret_cast<const char*>(&object), sizeof(object));
         }
 
         /// Same as `Receive(char*, const uint size)` but works with typed objects.
@@ -202,13 +195,27 @@ namespace Net {
             return Receive(&destObject);
         }
 
-        inline Status GetStatus() const { return status; };
+        // Wrappers for strings
+        template<>
+        void Send(const char* string) {
+            Send(string, std::strlen(string));
+        }
+        template<>
+        void Send(const std::string_view& string) {
+            Send(string.data(), string.size());
+        }
+        template<>
+        void Send(const std::string& string) {
+            Send(string.data(), string.size());
+        }
+
+        inline State GetState() const { return status; };
         /// Returns `true` if socket descriptor is valid and ready to use.
         inline bool IsOpen() const { return osSocket != INVALID_SOCKET; }
         /// Returns `true` if socket connected to remote side.
-        inline bool IsConnected() const { return status == Status::Connected; };
+        inline bool IsConnected() const { return status == State::Connected; };
         /// Returns `true` if socket is listening for connections.
-        inline bool IsListening() const { return status == Status::Listening; };
+        inline bool IsListening() const { return status == State::Listening; };
         /// Returns `true` if the `Socket` represents a real os-specific socket, `false` otherwise.
         inline bool IsValid() const { return IsOpen(); }
     };
