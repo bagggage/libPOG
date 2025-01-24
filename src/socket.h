@@ -2,6 +2,7 @@
 #define _SOCKET_H
 
 #include <string>
+#include <cstring>
 
 #ifdef _WIN32 // Windows NT
 #include <WS2tcpip.h>
@@ -121,24 +122,24 @@ namespace Net {
     };
 
     class Socket {
-    private:
-#ifndef _WIN32
-        typedef int SOCKET;
-#endif
+    public:
         enum class State : uint8_t {
             None,
             Connected,
             Listening
         };
-
+    private:
+#ifndef _WIN32
+        typedef int SOCKET;
+#endif
         SOCKET osSocket = INVALID_SOCKET;
         State status = State::None;
 
     public:
         Socket() noexcept = default;
         /// Opens at constructing.
-        Socket(const Protocol protocol, const Address::Family addrFamily = Address::Family::None) noexcept {
-            Open(protocol, addrFamily);
+        Socket(const Address::Family addrFamily, const Protocol protocol = Protocol::None) noexcept {
+            Open(addrFamily, protocol);
         }
         // Move semantic.
         Socket(Socket&& other) noexcept {
@@ -150,7 +151,7 @@ namespace Net {
 
         ~Socket() noexcept { Close(); }
 
-        bool Open(const Protocol protocol, const Address::Family addrFamily);
+        bool Open(const Address::Family addrFamily, const Protocol protocol);
         void Close();
 
         // Client side.
@@ -193,20 +194,6 @@ namespace Net {
         template<typename T>
         uint Receive(T& destObject) {
             return Receive(&destObject);
-        }
-
-        // Wrappers for strings
-        template<>
-        void Send(const char* string) {
-            Send(string, std::strlen(string));
-        }
-        template<>
-        void Send(const std::string_view& string) {
-            Send(string.data(), string.size());
-        }
-        template<>
-        void Send(const std::string& string) {
-            Send(string.data(), string.size());
         }
 
         inline State GetState() const { return status; };

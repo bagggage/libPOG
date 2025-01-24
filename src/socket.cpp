@@ -73,10 +73,18 @@ Address Address::FromString(const char* address_str, const port_t port, Family f
         family = (sv.find(':') != std::string_view::npos) ? Family::IPv6 : Family::IPv4;
     }
 
-    if (inet_pton(static_cast<int>(family), address_str, &result.osAddress) != 1) {
+    int ret;
+    if (family == Family::IPv4) {
+        ret = inet_pton(static_cast<int>(family), address_str, &result.osAddress.ipv4.sin_addr);
+    } else {
+        ret = inet_pton(static_cast<int>(family), address_str, &result.osAddress.ipv6.sin6_addr);
+    }
+
+    if (ret != 1) {
         Utils::Error("Invalid address format");
         result.osAddress._validFlag = invalidFlag;
     } else {
+        result.osAddress.any.sa_family = static_cast<int>(family);
         // Assume that `sin_port` in `sockaddr_in6` has the same byte offset.
         result.osAddress.ipv4.sin_port = htons(port);
     }
@@ -108,13 +116,14 @@ Address Address::FromDomain(const char* domain_str, const port_t port, const Pro
     }
 
     result.osAddress.any = *addresses->ai_addr;
+    result.osAddress.ipv4.sin_port = htons(port);
     freeaddrinfo(addresses);
 
     return result;
 }
 
 Address
-Address::MakeBind(const Protocol protocol = Protocol::TCP, const Family family = Family::IPv4, const port_t port = 0) {
+Address::MakeBind(const Protocol protocol, const Family family, const port_t port) {
     Address result;
     if (protocol == Protocol::None || family == Family::None) {
         return result;
@@ -139,21 +148,30 @@ Address::MakeBind(const Protocol protocol = Protocol::TCP, const Family family =
 }
 
 std::string Address::ConvertToString() const {
-    std::string result(INET6_ADDRSTRLEN, 0);
+    std::string result;
     const void* ret;
     if (osAddress.any.sa_family == AF_INET) {
+        result.reserve(INET_ADDRSTRLEN + 6); result.resize(INET_ADDRSTRLEN);
         ret = inet_ntop(AF_INET, &osAddress.ipv4.sin_addr, result.data(), result.size());
     } else {
+        result.reserve(INET6_ADDRSTRLEN + 6); result.resize(INET6_ADDRSTRLEN);
         ret = inet_ntop(AF_INET6, &osAddress.ipv6.sin6_addr, result.data(), result.size());
     }
 
     if (ret == nullptr) {
         return {};
     }
+
+    const size_t strLength = std::strlen(result.c_str());
+    result.resize(strLength + 1);
+
+    result[strLength] = ':';
+    result += std::to_string(GetPort());
+
     return std::move(result);
 }
 
-bool Socket::Open(const Protocol protocol, const Address::Family addr_family) {
+bool Socket::Open(const Address::Family addr_family, const Protocol protocol) {
     LIBPOG_ASSERT(IsOpen() == false, "Socket can be open only once");
 
 #ifdef _WIN32
@@ -180,7 +198,7 @@ bool Socket::Open(const Protocol protocol, const Address::Family addr_family) {
 
     osSocket = socket(static_cast<int>(addr_family), sock_type, sock_prot);
     if (osSocket == INVALID_SOCKET) [[unlikely]] {
-        Utils::Error("Failed to open socket:", std::system_category().message(GetLastSystemError()));
+        Utils::Error("Failed to open socket: ", std::system_category().message(GetLastSystemError()));
         return false;
     }
     return true;
@@ -193,7 +211,7 @@ void Socket::Close() {
 
     status = State::None;
     if (OS(closesocket, close)(osSocket) != 0) [[unlikely]] {
-        Utils::Error("Failed to close socket:", std::system_category().message(GetLastSystemError()));
+        Utils::Error("Failed to close socket: ", std::system_category().message(GetLastSystemError()));
     }
     osSocket = INVALID_SOCKET;
 }
@@ -227,4 +245,33 @@ Address::port_t Socket::Listen(const Address& address) {
         return Address::invalidPort;
     }
     return address.osAddress.ipv4.sin_port;
+}
+
+void Socket::Send(const char* data, const uint size) {
+    LIBPOG_ASSERT(IsConnected(), "Socket must be connected");
+    send(osSocket, data, size, 0);
+}
+
+uint Socket::Receive(char* buffer, const uint size) {
+    LIBPOG_ASSERT(IsConnected(), "Socket must be connected");
+    const ssize_t ret = recv(osSocket, buffer, size, 0);
+    if (ret < -1) [[unlikely]] {
+        return 0;
+    }
+
+    return static_cast<uint>(ret);
+}
+
+// Wrappers for strings
+template<>
+void Socket::Send(const char* string) {
+    Send(string, std::strlen(string));
+}
+template<>
+void Socket::Send(const std::string_view& string) {
+    Send(string.data(), string.size());
+}
+template<>
+void Socket::Send(const std::string& string) {
+    Send(string.data(), string.size());
 }
