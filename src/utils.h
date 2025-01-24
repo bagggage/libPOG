@@ -3,16 +3,16 @@
 
 #include <iostream>
 
-#ifndef LIBPOG_LOGS
+#ifndef LIBPOG_RELEASE
 #define LIBPOG_LOGS true
-#endif
-
 #define LIBPOG_PREFIX "libPOG"
 
-#ifndef LIBPOG_NO_ASSERT
 #include <cassert>
 #define LIBPOG_ASSERT(cond, msg) assert((cond) && msg)
 #else
+#define LIBPOG_LOGS false
+#define LIBPOG_PREFIX
+
 #define LIBPOG_ASSERT(...) (void())
 #endif
 
