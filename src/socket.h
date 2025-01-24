@@ -211,13 +211,15 @@ namespace Net {
             return Receive(&destObject);
         }
 
-        /// Returns last error/failure code.
+        /// Returns last error/failure code and clear it.
         inline Status Fail() const {
             const Status temp = status;
             status = Success;
             return temp;
         };
 
+        /// Returns last error/failure code without reset.
+        inline Status GetStatus() const { return status; }
         inline State GetState() const { return state; };
         /// Returns `true` if socket descriptor is valid and ready to use.
         inline bool IsOpen() const { return osSocket != INVALID_SOCKET; }
