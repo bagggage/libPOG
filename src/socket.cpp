@@ -50,6 +50,7 @@ static void DeinitWSA() {
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <unistd.h>
 #include <cstdio>
 #include <cstdlib>
@@ -61,16 +62,26 @@ inline static int GetLastSystemError() {
 
 const char* GetStatusName(const Status status) {
     switch (status) {
-        case Status::Success: return "Success";
-        case Status::Failed: return "Failed";
-        case Status::AlreadyConnected: return "Already Connected";
-        case Status::AlreadyInProgress: return "Already In Progress";
-        case Status::InvalidAddress: return "Invalid Address";
-        case Status::NotAvailable: return "Not Available";
-        case Status::Refused: return "Refused";
-        case Status::Timeout: return "Timeout";
-        case Status::TryAgain: return "Try Again";
-        case Status::Unreachable: return "Unreachable";
+        case Status::Success:
+            return "Success";
+        case Status::Failed:
+            return "Failed";
+        case Status::ConnectionRefused:
+            return "Connection Refused";
+        case Status::AlreadyConnected:
+            return "Already Connected";
+        case Status::AlreadyInProgress:
+            return "Already In Progress";
+        case Status::InvalidAddress:
+            return "Invalid Address";
+        case Status::NotAvailable:
+            return "Not Available";
+        case Status::Timeout:
+            return "Timeout";
+        case Status::TryAgain:
+            return "Try Again";
+        case Status::Unreachable:
+            return "Unreachable";
         default:
             break;
     }
@@ -79,9 +90,12 @@ const char* GetStatusName(const Status status) {
 
 const char* GetProtocolName(const Protocol protocol) {
     switch (protocol) {
-        case Protocol::None: return "None";
-        case Protocol::TCP: return "TCP";
-        case Protocol::UDP: return "UDP";
+        case Protocol::None:
+            return "None";
+        case Protocol::TCP:
+            return "TCP";
+        case Protocol::UDP:
+            return "UDP";
         default:
             break;
     }
@@ -90,32 +104,36 @@ const char* GetProtocolName(const Protocol protocol) {
 
 const char* Address::GetFamilyName(const Family family) {
     switch (family) {
-        case Family::None: return "None";
+        case Family::None:
+            return "None";
 #ifndef _WIN32
-        case Family::Local: return "Local";
+        case Family::Local:
+            return "Local";
 #endif
-        case Family::IPv4: return "IPv4";
-        case Family::IPv6: return "IPv6";
+        case Family::IPv4:
+            return "IPv4";
+        case Family::IPv6:
+            return "IPv6";
         default:
             break;
     }
     return "Unknown";
 }
 
-Address Address::FromString(const char* address_str, const port_t port, Family family) {
+Address Address::FromString(const char* addressStr, const port_t port, Family family) {
     Address result;
 
     if (family == Family::None) {
         // If contains `:` assume it is IPv6 address, otherwise IPv4.
-        const std::string_view sv(address_str);
+        const std::string_view sv(addressStr);
         family = (sv.find(':') != std::string_view::npos) ? Family::IPv6 : Family::IPv4;
     }
 
     int ret;
     if (family == Family::IPv4) {
-        ret = inet_pton(static_cast<int>(family), address_str, &result.osAddress.ipv4.sin_addr);
+        ret = inet_pton(static_cast<int>(family), addressStr, &result.osAddress.ipv4.sin_addr);
     } else {
-        ret = inet_pton(static_cast<int>(family), address_str, &result.osAddress.ipv6.sin6_addr);
+        ret = inet_pton(static_cast<int>(family), addressStr, &result.osAddress.ipv6.sin6_addr);
     }
 
     if (ret != 1) {
@@ -129,7 +147,7 @@ Address Address::FromString(const char* address_str, const port_t port, Family f
     return result;
 }
 
-Address Address::FromDomain(const char* domain_str, const port_t port, const Protocol protocol, const Family family) {
+Address Address::FromDomain(const char* domainStr, const port_t port, const Protocol protocol, const Family family) {
     typedef struct addrinfo ADDRINFO;
 
     Address result;
@@ -145,7 +163,7 @@ Address Address::FromDomain(const char* domain_str, const port_t port, const Pro
     }
 
     ADDRINFO* addresses = nullptr;
-    int ret = getaddrinfo(domain_str, nullptr, &hints, &addresses);
+    int ret = getaddrinfo(domainStr, nullptr, &hints, &addresses);
     if (ret != 0) {
         Utils::Warn("Failed to get address info: ", gai_strerror(ret));
         return result;
@@ -284,7 +302,7 @@ Address::port_t Socket::Listen(const Address& address) {
         "Socket can start listening from opened state only, if it's not alredy connected or listening"
     );
 
-    if (bind(osSocket, &address.osAddress.any, sizeof(address.osAddress.any)) == SOCKET_ERROR) {
+    if (bind(osSocket, &address.osAddress.any, sizeof(address.osAddress.any)) < 0) {
         status = static_cast<Status>(GetLastSystemError());
         Utils::Error("Failed to bind address to socket: ", std::system_category().message(static_cast<int>(status)));
         return Address::INVALID_PORT;
@@ -299,10 +317,27 @@ Address::port_t Socket::Listen(const Address& address) {
     return address.GetPort();
 }
 
+Socket Socket::Accept(Address& outRemoteAddress) {
+    LIBPOG_ASSERT(IsListening(), "Socket must listen");
+
+    Socket result;
+    socklen_t sockSize = sizeof(outRemoteAddress.osAddress.any);
+
+    result.osSocket = accept(osSocket, &outRemoteAddress.osAddress.any, &sockSize);
+    if (result.osSocket == INVALID_SOCKET) [[unlikely]] {
+        status = static_cast<Status>(GetLastSystemError());
+        return result;
+    }
+
+    result.state = State::Connected;
+    return result;
+}
+
 uint Socket::Send(const char* data, const uint size) {
     LIBPOG_ASSERT(IsConnected(), "Socket must be connected");
+
     ssize_t ret = send(osSocket, data, size, 0);
-    if (ret == -1) [[unlikely]] {
+    if (ret < 0) [[unlikely]] {
         status = static_cast<Status>(GetLastSystemError());
         return 0;
     }
@@ -312,13 +347,56 @@ uint Socket::Send(const char* data, const uint size) {
 
 uint Socket::Receive(char* buffer, const uint size) {
     LIBPOG_ASSERT(IsConnected(), "Socket must be connected");
+
     const ssize_t ret = recv(osSocket, buffer, size, 0);
-    if (ret == -1) [[unlikely]] {
+    if (ret < 0) [[unlikely]] {
         status = static_cast<Status>(GetLastSystemError());
         return 0;
     }
 
     return static_cast<uint>(ret);
+}
+
+uint Socket::SendTo(const Address& address, const char* dataPtr, const uint size) {
+    LIBPOG_ASSERT(IsOpen(), "Socket must be open");
+
+    const ssize_t ret = sendto(osSocket, dataPtr, size, 0, &address.osAddress.any, sizeof(address.osAddress.any));
+    if (ret < 0) [[unlikely]] {
+        status = static_cast<Status>(GetLastSystemError());
+        return 0;
+    }
+
+    return static_cast<uint>(ret);
+}
+
+uint Socket::ReceiveFrom(char* bufferPtr, const uint size, Address& outRemoteAddress) {
+    LIBPOG_ASSERT(IsOpen(), "Socket must be open");
+
+    socklen_t sockSize = sizeof(outRemoteAddress.osAddress.any);
+    const ssize_t ret = recvfrom(osSocket, bufferPtr, size, 0, &outRemoteAddress.osAddress.any, &sockSize);
+    if (ret < 0) {
+        status = static_cast<Status>(GetLastSystemError());
+        return 0;
+    }
+
+    return static_cast<uint>(ret);
+}
+
+uint Socket::ReceiveFrom(char* bufferPtr, const uint size, Socket& outSocket) {
+    LIBPOG_ASSERT(outSocket.IsOpen() == false, "Output socket must be closed");
+
+    Address remoteAddress;
+    const uint ret = ReceiveFrom(bufferPtr, size, remoteAddress);
+    if (remoteAddress.IsValid() == false) [[unlikely]] {
+        return ret;
+    }
+
+    if (outSocket.Open(remoteAddress.GetFamily(), Net::Protocol::UDP) == false) [[unlikely]] {
+        return ret;
+    }
+
+    outSocket.Connect(remoteAddress);
+    return ret;
 }
 
 // Wrappers for strings
@@ -333,4 +411,20 @@ uint Socket::Send(const std::string_view& string) {
 template<>
 uint Socket::Send(const std::string& string) {
     return Send(string.data(), string.size());
+}
+
+bool Socket::SetOption(const Option option, const void* value, const uint valueSize) {
+    if (setsockopt(osSocket, SOL_SOCKET, static_cast<int>(option), value, sizeof(value)) == SOCKET_ERROR) {
+        status = static_cast<Status>(GetLastSystemError());
+        return false;
+    }
+    return true;
+}
+
+bool Socket::GetOption(const Option option, void* outValue, uint& valueSize) const {
+    if (getsockopt(osSocket, SOL_SOCKET, static_cast<int>(option), &outValue, &valueSize) == SOCKET_ERROR) {
+        status = static_cast<Status>(GetLastSystemError());
+        return false;
+    }
+    return true;
 }

@@ -30,9 +30,10 @@ namespace Net {
         Failed, // Any other fail.
         AlreadyConnected = EISCONN,
         AlreadyInProgress = EALREADY,
+        ConnectionRefused = ECONNREFUSED,
+        ConnectionReset = ECONNRESET,
         InvalidAddress = EAFNOSUPPORT,
         NotAvailable = EADDRNOTAVAIL,
-        Refused = ECONNREFUSED,
         Timeout = ETIMEDOUT,
         TryAgain = EAGAIN,
         Unreachable = ENETUNREACH,
@@ -89,22 +90,22 @@ namespace Net {
         static const char* GetFamilyName(const Family family);
 
         /// Construct `Address` from port and string containing IP address.
-        /// - `address_str`: null-terminated string, must contain IP address.
+        /// - `addressStr`: null-terminated string, must contain IP address.
         /// - `family`: if `None` automatically recognise address family.
         ///
         /// Returns a valid `Address` on success, to check if failed use `Address::IsValid()` on returned object.
-        static Address FromString(const char* address_str, const port_t port, Family family = Family::None);
+        static Address FromString(const char* addressStr, const port_t port, Family family = Family::None);
 
         /// Construct `Address` from port and string containing domain name, but also works for IP addresses.
         /// Can make use of DNS to translate a domain name.
-        /// - `domain_str`: null-terminated string, can constain domain name or IP address.
+        /// - `domainStr`: null-terminated string, can constain domain name or IP address.
         /// - `protocol`: target protocol, if set make garantie that returned address can be used to create connection
         /// via specified protocol.
         /// - `family`: if `None` the result address can be either `IPv4` or `IPv6`.
         ///
         /// Returns a valid `Address` on success, to check if failed use `Address::IsValid()` on returned object.
         static Address FromDomain(
-            const char* domain_str,
+            const char* domainStr,
             const port_t port,
             const Protocol protocol = Protocol::None,
             const Family family = Family::None
@@ -143,6 +144,11 @@ namespace Net {
             None,
             Connected,
             Listening
+        };
+        enum class Option : uint8_t {
+            AcceptConnections = SO_ACCEPTCONN,
+            KeepAlive = SO_KEEPALIVE,
+            Broadcast = SO_BROADCAST,
         };
 
     private:
@@ -183,16 +189,20 @@ namespace Net {
         /// Wait and accept incoming connection. Returns `Socket` connected to
         /// remote side on success, to check if the operation failed use `Socket::IsValid()` on
         /// returned object and `Socket::Fail()` on current socket to get failure code.
-        Socket Accept(Address& out_remote_addr);
+        Socket Accept(Address& outRemoteAddress);
         Socket Accept();
 
         /// Sends the data to remote side. On success return the number of bytes sent.
         /// Otherwise returns `0`, use `Socket::Fail()` to determine what happend.
-        uint Send(const char* data_ptr, const uint size);
+        uint Send(const char* dataPtr, const uint size);
         /// Receives data from remote side.
         /// Returns number of received bytes. `0` represents an error or no-data,
         /// use `Socket::Fail()` to determine what happend.
-        uint Receive(char* buffer_ptr, const uint size);
+        uint Receive(char* bufferPtr, const uint size);
+
+        uint SendTo(const Address& address, const char* dataPtr, const uint size);
+        uint ReceiveFrom(char* bufferPtr, const uint size, Address& outRemoteAddress);
+        uint ReceiveFrom(char* bufferPtr, const uint size, Socket& outSocket);
 
         /// Same as `Send(const char*, const uint size)`, but works with typed objects.
         template<typename T>
@@ -216,6 +226,14 @@ namespace Net {
             return Receive(&destObject);
         }
 
+        bool SetOption(const Option option, const void* value, const uint valueSize);
+        bool GetOption(const Option option, void* value, uint& valueSize) const;
+
+        template<typename T>
+        bool SetOption(const Option option, const T value) { return SetOption(option, &value, sizeof(value)); }
+        template<typename T>
+        bool GetOption(const Option option, T& outValue) const { return GetOption(option, &outValue, sizeof(outValue)); }
+
         /// Returns last error/failure code and clear it.
         inline Status Fail() const {
             const Status temp = status;
@@ -225,6 +243,7 @@ namespace Net {
 
         /// Returns last error/failure code without reset.
         inline Status GetStatus() const { return status; }
+        /// Returns socket state.
         inline State GetState() const { return state; };
         /// Returns `true` if socket descriptor is valid and ready to use.
         inline bool IsOpen() const { return osSocket != INVALID_SOCKET; }
